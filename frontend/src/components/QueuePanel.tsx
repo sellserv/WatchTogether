@@ -26,7 +26,7 @@ export default function QueuePanel({ queue, onRemove, onReorder }: Props) {
         {queue.map((item, index) => (
           <div
             key={item.id}
-            className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.05] transition-colors group"
+            className="flex items-center gap-3 p-2 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.07] backdrop-blur-sm transition-colors group"
           >
             {/* Thumbnail */}
             <div className="w-20 h-12 rounded overflow-hidden flex-shrink-0 bg-black/40">

@@ -335,9 +335,9 @@ export default function Room() {
         </div>
 
         {/* Sidebar */}
-        <div className="hidden lg:flex flex-col w-[380px] border-l border-white/[0.06] bg-white/[0.01]">
+        <div className="hidden lg:flex flex-col w-[380px] border-l border-white/[0.08] bg-white/[0.05] backdrop-blur-xl">
           {/* Sidebar Tabs */}
-          <div className="flex border-b border-white/[0.06]">
+          <div className="flex border-b border-white/[0.08]">
             {tabButton('chat', 'Chat', <MessageSquare className="w-3.5 h-3.5" />, unreadCount)}
             {tabButton('people', `People (${users.length})`, <Users className="w-3.5 h-3.5" />)}
             {tabButton('queue', `Queue (${queue.length})`, <ListMusic className="w-3.5 h-3.5" />)}
@@ -351,8 +351,8 @@ export default function Room() {
         {mobileTab && (
           <div className="lg:hidden fixed inset-0 z-50 flex">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileTab(null)} />
-            <div className="relative ml-auto w-full max-w-sm bg-[#0f0f1a] border-l border-white/[0.06] flex flex-col animate-slide-up">
-              <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
+            <div className="relative ml-auto w-full max-w-sm bg-white/[0.05] backdrop-blur-xl border-l border-white/[0.08] flex flex-col animate-slide-up">
+              <div className="flex items-center justify-between p-4 border-b border-white/[0.08]">
                 <span className="text-sm font-semibold text-white/60 uppercase tracking-wider">
                   {getTabLabel()}
                 </span>
@@ -367,7 +367,7 @@ export default function Room() {
       </div>
 
       {/* Mobile Bottom Bar */}
-      <div className="lg:hidden flex border-t border-white/[0.06] bg-white/[0.02]">
+      <div className="lg:hidden flex border-t border-white/[0.08] bg-white/[0.05] backdrop-blur-xl">
         {mobileTabButton('chat', 'Chat', <MessageSquare className="w-4 h-4" />, unreadCount)}
         {mobileTabButton('people', 'People', <Users className="w-4 h-4" />)}
         {mobileTabButton('queue', 'Queue', <ListMusic className="w-4 h-4" />)}

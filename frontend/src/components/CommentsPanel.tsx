@@ -139,7 +139,7 @@ export default function CommentsPanel({ videoId }: Props) {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Sort toggle */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.04]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.08]">
         <span className="text-[10px] text-white/20 uppercase tracking-wider">
           {comments.length} comments
         </span>

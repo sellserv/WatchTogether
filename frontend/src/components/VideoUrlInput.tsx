@@ -33,8 +33,8 @@ export default function VideoUrlInput({ onLoadVideo, onAddToQueue }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02]">
-      <div className="flex-1 flex items-center gap-2 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-2 focus-within:border-red-500/30 focus-within:bg-white/[0.05] transition-all">
+    <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.08] bg-white/[0.05] backdrop-blur-xl">
+      <div className="flex-1 flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 focus-within:border-red-500/30 focus-within:bg-white/[0.07] transition-all">
         <Link className="w-4 h-4 text-white/20 flex-shrink-0" />
         <input
           type="text"

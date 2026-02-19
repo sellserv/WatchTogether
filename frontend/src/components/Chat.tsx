@@ -71,8 +71,8 @@ export default function Chat({ messages, onSendMessage, currentUserId }: Props) 
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-white/[0.06]">
-        <div className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.06] rounded-xl px-3 py-2.5 focus-within:border-red-500/30 focus-within:bg-white/[0.05] transition-all">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-white/[0.08]">
+        <div className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2.5 focus-within:border-red-500/30 focus-within:bg-white/[0.07] transition-all">
           <input
             type="text"
             value={text}

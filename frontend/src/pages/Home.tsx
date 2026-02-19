@@ -90,7 +90,7 @@ export default function Home() {
         </div>
 
         {/* Create Room Card */}
-        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 mb-4 shadow-inner-light">
+        <div className="bg-white/[0.05] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 mb-4 shadow-inner-light">
           <label className="block text-xs font-semibold uppercase tracking-wider text-white/40 mb-2">
             Your Name
           </label>
@@ -101,7 +101,7 @@ export default function Home() {
             onKeyDown={(e) => handleKeyDown(e, 'create')}
             placeholder="Enter display name..."
             maxLength={20}
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3.5 text-white placeholder-white/20 text-sm font-medium transition-all duration-200 focus:border-red-500/40 focus:bg-white/[0.06] focus:shadow-glow-red-sm hover:border-white/[0.12]"
+            className="w-full bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm rounded-xl px-4 py-3.5 text-white placeholder-white/20 text-sm font-medium transition-all duration-200 focus:border-red-500/40 focus:bg-white/[0.06] focus:shadow-glow-red-sm hover:border-white/[0.12]"
           />
 
           <button
@@ -128,7 +128,7 @@ export default function Home() {
         </div>
 
         {/* Join Room Card */}
-        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 shadow-inner-light">
+        <div className="bg-white/[0.05] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-6 shadow-inner-light">
           <label className="block text-xs font-semibold uppercase tracking-wider text-white/40 mb-2">
             Room Code
           </label>
@@ -140,7 +140,7 @@ export default function Home() {
               onKeyDown={(e) => handleKeyDown(e, 'join')}
               placeholder="XXXXXX"
               maxLength={6}
-              className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3.5 text-white placeholder-white/20 text-sm font-mono font-semibold tracking-[0.2em] text-center transition-all duration-200 focus:border-red-500/40 focus:bg-white/[0.06] focus:shadow-glow-red-sm hover:border-white/[0.12] uppercase"
+              className="flex-1 bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm rounded-xl px-4 py-3.5 text-white placeholder-white/20 text-sm font-mono font-semibold tracking-[0.2em] text-center transition-all duration-200 focus:border-red-500/40 focus:bg-white/[0.06] focus:shadow-glow-red-sm hover:border-white/[0.12] uppercase"
             />
             <button
               onClick={handleJoin}

@@ -18,7 +18,7 @@ export default function RoomHeader({ roomId, isHost, userCount, onLeave }: Props
   }
 
   return (
-    <header className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-white/[0.02] backdrop-blur-sm">
+    <header className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-white/[0.05] backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-600/20 to-red-900/20 border border-red-500/10 flex items-center justify-center">
