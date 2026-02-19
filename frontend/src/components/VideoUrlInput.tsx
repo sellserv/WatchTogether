@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Link, Loader2 } from 'lucide-react'
+import { Link, Loader2, ListPlus } from 'lucide-react'
 
 interface Props {
   onLoadVideo: (url: string) => void
+  onAddToQueue?: (url: string) => void
 }
 
-export default function VideoUrlInput({ onLoadVideo }: Props) {
+export default function VideoUrlInput({ onLoadVideo, onAddToQueue }: Props) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
+  const [queueLoading, setQueueLoading] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -16,6 +18,16 @@ export default function VideoUrlInput({ onLoadVideo }: Props) {
     onLoadVideo(url.trim())
     setTimeout(() => {
       setLoading(false)
+      setUrl('')
+    }, 500)
+  }
+
+  const handleAddToQueue = () => {
+    if (!url.trim() || !onAddToQueue) return
+    setQueueLoading(true)
+    onAddToQueue(url.trim())
+    setTimeout(() => {
+      setQueueLoading(false)
       setUrl('')
     }, 500)
   }
@@ -38,8 +50,19 @@ export default function VideoUrlInput({ onLoadVideo }: Props) {
         className="px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
       >
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-        Load Video
+        Play Now
       </button>
+      {onAddToQueue && (
+        <button
+          type="button"
+          onClick={handleAddToQueue}
+          disabled={!url.trim() || queueLoading}
+          className="px-3 py-2 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] hover:border-white/[0.15] text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"
+        >
+          {queueLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ListPlus className="w-3.5 h-3.5" />}
+          Queue
+        </button>
+      )}
     </form>
   )
 }

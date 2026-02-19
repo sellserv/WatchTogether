@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { socket } from '../lib/socket'
-import type { User, ChatMessage, VideoState, RoomState } from '../lib/types'
+import type { User, ChatMessage, VideoState, RoomState, QueueItem } from '../lib/types'
 import VideoPlayer from '../components/VideoPlayer'
 import Chat from '../components/Chat'
 import UserList from '../components/UserList'
 import RoomHeader from '../components/RoomHeader'
 import VideoUrlInput from '../components/VideoUrlInput'
-import { MessageSquare, Users, X } from 'lucide-react'
+import QueuePanel from '../components/QueuePanel'
+import CommentsPanel from '../components/CommentsPanel'
+import { MessageSquare, Users, X, ListMusic, MessageCircle } from 'lucide-react'
+
+type SidebarTab = 'chat' | 'people' | 'queue' | 'comments'
 
 export default function Room() {
   const { roomId } = useParams<{ roomId: string }>()
@@ -22,14 +26,18 @@ export default function Room() {
     currentTime: 0,
     playbackRate: 1,
     timestamp: Date.now(),
+    seq: 0,
   })
   const [hostId, setHostId] = useState('')
   const [connected, setConnected] = useState(false)
-  const [showChat, setShowChat] = useState(true)
-  const [showUsers, setShowUsers] = useState(false)
+  const [activeTab, setActiveTab] = useState<SidebarTab>('chat')
+  const [mobileTab, setMobileTab] = useState<SidebarTab | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [queue, setQueue] = useState<QueueItem[]>([])
 
   const myUserId = useRef(localStorage.getItem('wp_userId') || '')
+  const connectedRef = useRef(false)
+  const joinedRef = useRef(false)
   const isHost = hostId === socket.id
 
   const handleRoomState = useCallback((state: RoomState) => {
@@ -37,35 +45,66 @@ export default function Room() {
     setHostId(state.hostId)
     setVideoState(state.videoState)
     setMessages(state.messages)
+    setQueue(state.queue)
     setConnected(true)
+    connectedRef.current = true
   }, [])
 
   useEffect(() => {
-    if (!socket.connected) {
-      const storedName = localStorage.getItem('wp_username')
-      if (!storedName) {
-        navigate('/')
-        return
-      }
+    const storedName = localStorage.getItem('wp_username')
+    if (!storedName) {
+      navigate('/')
+      return
+    }
 
-      socket.once('connect', () => {
-        socket.emit('room:join', { roomId: roomId!, userName: storedName }, (response: { success: boolean; error?: string; userId?: string }) => {
-          if (!response.success) {
-            navigate('/')
-          } else {
-            myUserId.current = response.userId || ''
-            localStorage.setItem('wp_userId', myUserId.current)
-          }
-        })
+    let retryCount = 0
+    const MAX_RETRIES = 3
+    joinedRef.current = false
+
+    const joinRoom = () => {
+      if (joinedRef.current) return
+      joinedRef.current = true
+      socket.emit('room:join', { roomId: roomId!, userName: storedName }, (response: { success: boolean; error?: string; userId?: string }) => {
+        if (!response.success) {
+          joinedRef.current = false
+          navigate('/')
+        } else {
+          myUserId.current = response.userId || ''
+          localStorage.setItem('wp_userId', myUserId.current)
+        }
       })
+    }
 
-      socket.once('connect_error', () => {
+    const handleConnect = () => {
+      retryCount = 0
+      joinRoom()
+    }
+
+    const handleConnectError = () => {
+      retryCount++
+      if (retryCount >= MAX_RETRIES) {
         socket.disconnect()
-        setTimeout(() => socket.connect(), 2000)
-      })
+        navigate('/')
+      }
+    }
 
+    // If already connected (navigated from Home.tsx), join immediately
+    if (socket.connected) {
+      joinRoom()
+    } else {
       socket.connect()
     }
+
+    socket.on('connect', handleConnect)
+    socket.on('connect_error', handleConnectError)
+
+    // Overall timeout - if not connected within 15s, bail out
+    const timeout = setTimeout(() => {
+      if (!connectedRef.current) {
+        socket.disconnect()
+        navigate('/')
+      }
+    }, 15000)
 
     socket.on('room:state', handleRoomState)
 
@@ -95,11 +134,13 @@ export default function Room() {
       }))
     })
 
+    socket.on('queue:update', ({ queue: newQueue }: { queue: QueueItem[] }) => {
+      setQueue(newQueue)
+    })
+
     socket.on('chat:message', (message) => {
       setMessages((prev) => [...prev, message])
-      if (!showChat) {
-        setUnreadCount((c) => c + 1)
-      }
+      setUnreadCount((c) => c + 1)
     })
 
     socket.on('error', ({ message }) => {
@@ -107,16 +148,21 @@ export default function Room() {
     })
 
     return () => {
+      clearTimeout(timeout)
+      socket.off('connect', handleConnect)
+      socket.off('connect_error', handleConnectError)
       socket.off('room:state')
       socket.off('room:user-joined')
       socket.off('room:user-left')
       socket.off('room:host-changed')
       socket.off('video:state-update')
       socket.off('video:load')
+      socket.off('queue:update')
       socket.off('chat:message')
       socket.off('error')
     }
-  }, [roomId, navigate, handleRoomState, showChat])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, navigate, handleRoomState])
 
   const handleLeave = () => {
     socket.emit('room:leave')
@@ -126,6 +172,26 @@ export default function Room() {
 
   const handleLoadVideo = (url: string) => {
     socket.emit('video:load', { url })
+  }
+
+  const handleAddToQueue = (url: string) => {
+    socket.emit('queue:add', { url }, (response: { success: boolean; error?: string }) => {
+      if (!response.success) {
+        console.error('Queue add failed:', response.error)
+      }
+    })
+  }
+
+  const handleQueueRemove = (itemId: string) => {
+    socket.emit('queue:remove', { itemId })
+  }
+
+  const handleQueueReorder = (itemId: string, newIndex: number) => {
+    socket.emit('queue:reorder', { itemId, newIndex })
+  }
+
+  const handleVideoEnded = () => {
+    socket.emit('video:ended')
   }
 
   const handlePlay = (currentTime: number) => {
@@ -144,15 +210,18 @@ export default function Room() {
     socket.emit('chat:message', { text })
   }
 
-  const toggleChat = () => {
-    setShowChat(!showChat)
-    if (!showChat) setUnreadCount(0)
-    setShowUsers(false)
+  const switchTab = (tab: SidebarTab) => {
+    setActiveTab(tab)
+    if (tab === 'chat') setUnreadCount(0)
   }
 
-  const toggleUsers = () => {
-    setShowUsers(!showUsers)
-    setShowChat(false)
+  const switchMobileTab = (tab: SidebarTab) => {
+    if (mobileTab === tab) {
+      setMobileTab(null)
+    } else {
+      setMobileTab(tab)
+      if (tab === 'chat') setUnreadCount(0)
+    }
   }
 
   if (!connected) {
@@ -164,6 +233,66 @@ export default function Room() {
         </div>
       </div>
     )
+  }
+
+  const tabButton = (tab: SidebarTab, label: string, icon: React.ReactNode, badge?: number) => (
+    <button
+      onClick={() => switchTab(tab)}
+      className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${
+        activeTab === tab ? 'text-red-400 border-b-2 border-red-500' : 'text-white/30 hover:text-white/50'
+      }`}
+    >
+      {icon}
+      {label}
+      {badge && badge > 0 && activeTab !== tab ? (
+        <span className="bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      ) : null}
+    </button>
+  )
+
+  const mobileTabButton = (tab: SidebarTab, label: string, icon: React.ReactNode, badge?: number) => (
+    <button
+      onClick={() => switchMobileTab(tab)}
+      className={`flex-1 py-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider transition-colors relative ${
+        mobileTab === tab ? 'text-red-400' : 'text-white/30'
+      }`}
+    >
+      {icon}
+      {label}
+      {badge && badge > 0 ? (
+        <span className="absolute top-2 right-1/4 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      ) : null}
+    </button>
+  )
+
+  const renderTabContent = (isMobile = false) => {
+    const tab = isMobile ? mobileTab : activeTab
+    switch (tab) {
+      case 'chat':
+        return <Chat messages={messages} onSendMessage={handleSendMessage} currentUserId={socket.id || ''} />
+      case 'people':
+        return <UserList users={users} hostId={hostId} currentUserId={socket.id || ''} />
+      case 'queue':
+        return <QueuePanel queue={queue} onRemove={handleQueueRemove} onReorder={handleQueueReorder} />
+      case 'comments':
+        return <CommentsPanel videoId={videoState.videoId} />
+      default:
+        return null
+    }
+  }
+
+  const getTabLabel = () => {
+    switch (mobileTab) {
+      case 'chat': return 'Chat'
+      case 'people': return `People (${users.length})`
+      case 'queue': return `Queue (${queue.length})`
+      case 'comments': return 'Comments'
+      default: return ''
+    }
   }
 
   return (
@@ -178,10 +307,8 @@ export default function Room() {
       <div className="flex-1 flex min-h-0">
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Video URL Input (host only) */}
-          {isHost && (
-            <VideoUrlInput onLoadVideo={handleLoadVideo} />
-          )}
+          {/* Video URL Input */}
+          <VideoUrlInput onLoadVideo={handleLoadVideo} onAddToQueue={handleAddToQueue} />
 
           {/* Video Player */}
           <div className="flex-1 relative bg-black/40">
@@ -191,6 +318,7 @@ export default function Room() {
                 onPlay={handlePlay}
                 onPause={handlePause}
                 onSeek={handleSeek}
+                onEnd={handleVideoEnded}
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white/20">
@@ -199,7 +327,7 @@ export default function Room() {
                 </svg>
                 <p className="text-lg font-medium">No video loaded</p>
                 <p className="text-sm mt-1 text-white/10">
-                  {isHost ? 'Paste a YouTube URL above to get started' : 'Waiting for the host to load a video...'}
+                  Paste a YouTube URL above to get started
                 </p>
               </div>
             )}
@@ -210,62 +338,29 @@ export default function Room() {
         <div className="hidden lg:flex flex-col w-[380px] border-l border-white/[0.06] bg-white/[0.01]">
           {/* Sidebar Tabs */}
           <div className="flex border-b border-white/[0.06]">
-            <button
-              onClick={() => { setShowChat(true); setShowUsers(false); setUnreadCount(0) }}
-              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${
-                showChat ? 'text-red-400 border-b-2 border-red-500' : 'text-white/30 hover:text-white/50'
-              }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Chat
-              {unreadCount > 0 && !showChat && (
-                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => { setShowUsers(true); setShowChat(false) }}
-              className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${
-                showUsers ? 'text-red-400 border-b-2 border-red-500' : 'text-white/30 hover:text-white/50'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              People ({users.length})
-            </button>
+            {tabButton('chat', 'Chat', <MessageSquare className="w-3.5 h-3.5" />, unreadCount)}
+            {tabButton('people', `People (${users.length})`, <Users className="w-3.5 h-3.5" />)}
+            {tabButton('queue', `Queue (${queue.length})`, <ListMusic className="w-3.5 h-3.5" />)}
+            {tabButton('comments', 'Comments', <MessageCircle className="w-3.5 h-3.5" />)}
           </div>
 
-          {showChat && (
-            <Chat
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              currentUserId={socket.id || ''}
-            />
-          )}
-          {showUsers && (
-            <UserList users={users} hostId={hostId} currentUserId={socket.id || ''} />
-          )}
+          {renderTabContent()}
         </div>
 
         {/* Mobile sidebar overlay */}
-        {(showChat || showUsers) && (
+        {mobileTab && (
           <div className="lg:hidden fixed inset-0 z-50 flex">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setShowChat(false); setShowUsers(false) }} />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileTab(null)} />
             <div className="relative ml-auto w-full max-w-sm bg-[#0f0f1a] border-l border-white/[0.06] flex flex-col animate-slide-up">
               <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
                 <span className="text-sm font-semibold text-white/60 uppercase tracking-wider">
-                  {showChat ? 'Chat' : `People (${users.length})`}
+                  {getTabLabel()}
                 </span>
-                <button onClick={() => { setShowChat(false); setShowUsers(false) }} className="text-white/30 hover:text-white/60">
+                <button onClick={() => setMobileTab(null)} className="text-white/30 hover:text-white/60">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              {showChat && (
-                <Chat messages={messages} onSendMessage={handleSendMessage} currentUserId={socket.id || ''} />
-              )}
-              {showUsers && (
-                <UserList users={users} hostId={hostId} currentUserId={socket.id || ''} />
-              )}
+              {renderTabContent(true)}
             </div>
           </div>
         )}
@@ -273,29 +368,10 @@ export default function Room() {
 
       {/* Mobile Bottom Bar */}
       <div className="lg:hidden flex border-t border-white/[0.06] bg-white/[0.02]">
-        <button
-          onClick={toggleChat}
-          className={`flex-1 py-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider transition-colors relative ${
-            showChat ? 'text-red-400' : 'text-white/30'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4" />
-          Chat
-          {unreadCount > 0 && (
-            <span className="absolute top-2 right-1/4 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={toggleUsers}
-          className={`flex-1 py-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
-            showUsers ? 'text-red-400' : 'text-white/30'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          People ({users.length})
-        </button>
+        {mobileTabButton('chat', 'Chat', <MessageSquare className="w-4 h-4" />, unreadCount)}
+        {mobileTabButton('people', 'People', <Users className="w-4 h-4" />)}
+        {mobileTabButton('queue', 'Queue', <ListMusic className="w-4 h-4" />)}
+        {mobileTabButton('comments', 'Comments', <MessageCircle className="w-4 h-4" />)}
       </div>
     </div>
   )

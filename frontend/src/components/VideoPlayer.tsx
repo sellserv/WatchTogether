@@ -7,18 +7,22 @@ interface Props {
   onPlay: (currentTime: number) => void
   onPause: (currentTime: number) => void
   onSeek: (currentTime: number) => void
+  onEnd?: () => void
 }
 
-export default function VideoPlayer({ videoState, onPlay, onPause, onSeek }: Props) {
+export default function VideoPlayer({ videoState, onPlay, onPause, onSeek, onEnd }: Props) {
   const playerRef = useRef<YouTubePlayer | null>(null)
   const isRemoteUpdate = useRef(false)
-  const lastSyncTimestamp = useRef(0)
+  const lastProcessedSeq = useRef(0)
+  const seekDetectorLastTime = useRef(0)
+  const playDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pauseDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const syncPlayer = useCallback(() => {
     const player = playerRef.current
     if (!player || isRemoteUpdate.current) return
-    if (videoState.timestamp === lastSyncTimestamp.current) return
-    lastSyncTimestamp.current = videoState.timestamp
+    if (videoState.seq <= lastProcessedSeq.current) return
+    lastProcessedSeq.current = videoState.seq
 
     isRemoteUpdate.current = true
 
@@ -31,8 +35,10 @@ export default function VideoPlayer({ videoState, onPlay, onPause, onSeek }: Pro
       const currentTime = player.getCurrentTime()
       const diff = Math.abs(currentTime - targetTime)
 
-      if (diff > 2) {
+      if (diff > 1.5) {
         player.seekTo(targetTime, true)
+        // Update SeekDetector so it doesn't detect this sync seek as user-initiated
+        seekDetectorLastTime.current = targetTime
       }
 
       const playerState = player.getPlayerState()
@@ -51,12 +57,20 @@ export default function VideoPlayer({ videoState, onPlay, onPause, onSeek }: Pro
 
     setTimeout(() => {
       isRemoteUpdate.current = false
-    }, 300)
+    }, 800)
   }, [videoState])
 
   useEffect(() => {
     syncPlayer()
   }, [syncPlayer])
+
+  // Clean up debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (playDebounceTimer.current) clearTimeout(playDebounceTimer.current)
+      if (pauseDebounceTimer.current) clearTimeout(pauseDebounceTimer.current)
+    }
+  }, [])
 
   const onReady = (event: YouTubeEvent) => {
     playerRef.current = event.target
@@ -72,11 +86,31 @@ export default function VideoPlayer({ videoState, onPlay, onPause, onSeek }: Pro
 
     // Playing
     if (state === 1) {
-      onPlay(currentTime)
+      if (pauseDebounceTimer.current) {
+        clearTimeout(pauseDebounceTimer.current)
+        pauseDebounceTimer.current = null
+      }
+      if (playDebounceTimer.current) clearTimeout(playDebounceTimer.current)
+      playDebounceTimer.current = setTimeout(() => {
+        onPlay(currentTime)
+        playDebounceTimer.current = null
+      }, 150)
     }
     // Paused
     else if (state === 2) {
-      onPause(currentTime)
+      if (playDebounceTimer.current) {
+        clearTimeout(playDebounceTimer.current)
+        playDebounceTimer.current = null
+      }
+      if (pauseDebounceTimer.current) clearTimeout(pauseDebounceTimer.current)
+      pauseDebounceTimer.current = setTimeout(() => {
+        onPause(currentTime)
+        pauseDebounceTimer.current = null
+      }, 150)
+    }
+    // Ended
+    else if (state === 0) {
+      onEnd?.()
     }
   }
 
@@ -110,7 +144,7 @@ export default function VideoPlayer({ videoState, onPlay, onPause, onSeek }: Pro
         onEnd={() => {}}
       />
       {/* Invisible overlay to capture seek events via timeupdate polling */}
-      <SeekDetector playerRef={playerRef} onSeek={handleSeek} isRemoteUpdate={isRemoteUpdate} />
+      <SeekDetector playerRef={playerRef} onSeek={handleSeek} isRemoteUpdate={isRemoteUpdate} seekDetectorLastTime={seekDetectorLastTime} />
     </div>
   )
 }
@@ -119,30 +153,30 @@ function SeekDetector({
   playerRef,
   onSeek,
   isRemoteUpdate,
+  seekDetectorLastTime,
 }: {
   playerRef: React.MutableRefObject<YouTubePlayer | null>
   onSeek: () => void
   isRemoteUpdate: React.MutableRefObject<boolean>
+  seekDetectorLastTime: React.MutableRefObject<number>
 }) {
-  const lastTime = useRef(0)
-
   useEffect(() => {
     const interval = setInterval(() => {
       if (!playerRef.current || isRemoteUpdate.current) return
       try {
         const currentTime = playerRef.current.getCurrentTime()
-        const diff = Math.abs(currentTime - lastTime.current)
-        if (diff > 2 && lastTime.current > 0) {
+        const diff = Math.abs(currentTime - seekDetectorLastTime.current)
+        if (diff > 2 && seekDetectorLastTime.current > 0) {
           onSeek()
         }
-        lastTime.current = currentTime
+        seekDetectorLastTime.current = currentTime
       } catch {
         // Player not ready
       }
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [playerRef, onSeek, isRemoteUpdate])
+  }, [playerRef, onSeek, isRemoteUpdate, seekDetectorLastTime])
 
   return null
 }

@@ -5,6 +5,15 @@ export interface User {
   avatar: string;
 }
 
+export interface QueueItem {
+  id: string;
+  videoId: string;
+  videoUrl: string;
+  title: string;
+  addedBy: string;
+  addedAt: number;
+}
+
 export interface Room {
   id: string;
   hostId: string;
@@ -15,6 +24,8 @@ export interface Room {
   currentTime: number;
   lastSyncTime: number;
   playbackRate: number;
+  seq: number;
+  queue: QueueItem[];
   messages: ChatMessage[];
   createdAt: number;
 }
@@ -36,6 +47,7 @@ export interface VideoState {
   currentTime: number;
   playbackRate: number;
   timestamp: number;
+  seq: number;
 }
 
 export interface ClientToServerEvents {
@@ -47,6 +59,10 @@ export interface ClientToServerEvents {
   'video:pause': (data: { currentTime: number }) => void;
   'video:seek': (data: { currentTime: number }) => void;
   'video:rate': (data: { rate: number }) => void;
+  'video:ended': () => void;
+  'queue:add': (data: { url: string }, callback: (response: { success: boolean; error?: string }) => void) => void;
+  'queue:remove': (data: { itemId: string }) => void;
+  'queue:reorder': (data: { itemId: string; newIndex: number }) => void;
   'chat:message': (data: { text: string }) => void;
 }
 
@@ -57,12 +73,14 @@ export interface ServerToClientEvents {
     hostId: string;
     videoState: VideoState;
     messages: ChatMessage[];
+    queue: QueueItem[];
   }) => void;
   'room:user-joined': (data: { user: User }) => void;
   'room:user-left': (data: { userId: string; userName: string }) => void;
   'room:host-changed': (data: { hostId: string }) => void;
   'video:state-update': (data: VideoState) => void;
   'video:load': (data: { videoId: string; videoUrl: string }) => void;
+  'queue:update': (data: { queue: QueueItem[] }) => void;
   'chat:message': (data: ChatMessage) => void;
   'error': (data: { message: string }) => void;
 }

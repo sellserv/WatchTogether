@@ -44,6 +44,8 @@ export function createRoom(hostSocketId: string, userName: string): { room: Room
     currentTime: 0,
     lastSyncTime: Date.now(),
     playbackRate: 1,
+    seq: 0,
+    queue: [],
     messages: [],
     createdAt: Date.now(),
   };
@@ -139,6 +141,7 @@ export function getVideoState(room: Room): VideoState {
     currentTime: room.currentTime,
     playbackRate: room.playbackRate,
     timestamp: room.lastSyncTime,
+    seq: room.seq,
   };
 }
 

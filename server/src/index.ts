@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import { nanoid } from 'nanoid';
 import {
   createRoom,
   joinRoom,
@@ -14,7 +15,7 @@ import {
   getRoomCount,
   getTotalUsers,
 } from './rooms.js';
-import type { ClientToServerEvents, ServerToClientEvents } from './types.js';
+import type { ClientToServerEvents, ServerToClientEvents, QueueItem } from './types.js';
 
 const app = express();
 const server = createServer(app);
@@ -40,6 +41,73 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// --- YouTube Comments Proxy via Invidious ---
+const DEFAULT_INVIDIOUS_INSTANCES = [
+  'vid.puffyan.us',
+  'inv.nadeko.net',
+  'invidious.nerdvpn.de',
+  'invidious.jing.rocks',
+  'invidious.privacyredirect.com',
+];
+
+const INVIDIOUS_INSTANCES = process.env.INVIDIOUS_INSTANCES
+  ? process.env.INVIDIOUS_INSTANCES.split(',').map((s) => s.trim())
+  : DEFAULT_INVIDIOUS_INSTANCES;
+
+const commentsCache = new Map<string, { data: unknown; expires: number }>();
+
+app.get('/api/comments/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+  const sortBy = (req.query.sort_by as string) || 'top';
+  const continuation = req.query.continuation as string | undefined;
+
+  const cacheKey = `${videoId}:${sortBy}:${continuation || ''}`;
+  const cached = commentsCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    res.json(cached.data);
+    return;
+  }
+
+  let url = '';
+  for (const instance of INVIDIOUS_INSTANCES) {
+    try {
+      url = `https://${instance}/api/v1/comments/${videoId}?sort_by=${sortBy}`;
+      if (continuation) {
+        url += `&continuation=${encodeURIComponent(continuation)}`;
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!response.ok) continue;
+
+      const data = await response.json();
+      commentsCache.set(cacheKey, { data, expires: Date.now() + 5 * 60 * 1000 });
+
+      // Prune old cache entries periodically
+      if (commentsCache.size > 200) {
+        const now = Date.now();
+        for (const [key, entry] of commentsCache) {
+          if (entry.expires < now) commentsCache.delete(key);
+        }
+      }
+
+      res.json(data);
+      return;
+    } catch {
+      continue;
+    }
+  }
+
+  res.status(502).json({ error: 'Failed to fetch comments from all Invidious instances' });
+});
+
+// Track which rooms are currently processing video:ended to prevent race conditions
+const endedProcessing = new Set<string>();
+
 io.on('connection', (socket) => {
   console.log(`[connect] ${socket.id}`);
 
@@ -56,6 +124,7 @@ io.on('connection', (socket) => {
       hostId: room.hostId,
       videoState: getVideoState(room),
       messages: room.messages,
+      queue: room.queue,
     });
   });
 
@@ -78,6 +147,7 @@ io.on('connection', (socket) => {
       hostId: room.hostId,
       videoState: getVideoState(room),
       messages: room.messages,
+      queue: room.queue,
     });
 
     socket.to(room.id).emit('room:user-joined', { user });
@@ -94,16 +164,15 @@ io.on('connection', (socket) => {
   socket.on('video:load', (data) => {
     const room = getUserRoom(socket.id);
     if (!room) return;
-    if (room.hostId !== socket.id) {
-      socket.emit('error', { message: 'Only the host can change the video' });
-      return;
-    }
 
     const videoId = extractVideoId(data.url);
     if (!videoId) {
       socket.emit('error', { message: 'Invalid YouTube URL' });
       return;
     }
+
+    const user = room.users.get(socket.id);
+    const userName = user?.name || 'Someone';
 
     room.videoId = videoId;
     room.videoUrl = data.url;
@@ -112,11 +181,12 @@ io.on('connection', (socket) => {
     room.lastSyncTime = Date.now();
 
     io.to(room.id).emit('video:load', { videoId, videoUrl: data.url });
+    room.seq++;
     io.to(room.id).emit('video:state-update', getVideoState(room));
 
     const systemMsg = addMessage(room, 'system', '');
     if (systemMsg) {
-      systemMsg.text = `Host loaded a new video`;
+      systemMsg.text = `${userName} loaded a new video`;
       systemMsg.userId = 'system';
       systemMsg.userName = 'System';
       systemMsg.avatar = '🤖';
@@ -132,6 +202,7 @@ io.on('connection', (socket) => {
     room.isPlaying = true;
     room.currentTime = data.currentTime;
     room.lastSyncTime = Date.now();
+    room.seq++;
 
     socket.to(room.id).emit('video:state-update', getVideoState(room));
   });
@@ -143,6 +214,7 @@ io.on('connection', (socket) => {
     room.isPlaying = false;
     room.currentTime = data.currentTime;
     room.lastSyncTime = Date.now();
+    room.seq++;
 
     socket.to(room.id).emit('video:state-update', getVideoState(room));
   });
@@ -153,6 +225,7 @@ io.on('connection', (socket) => {
 
     room.currentTime = data.currentTime;
     room.lastSyncTime = Date.now();
+    room.seq++;
 
     socket.to(room.id).emit('video:state-update', getVideoState(room));
   });
@@ -160,10 +233,115 @@ io.on('connection', (socket) => {
   socket.on('video:rate', (data) => {
     const room = getUserRoom(socket.id);
     if (!room) return;
-    if (room.hostId !== socket.id) return;
 
     room.playbackRate = data.rate;
+    room.seq++;
     socket.to(room.id).emit('video:state-update', getVideoState(room));
+  });
+
+  socket.on('video:ended', () => {
+    const room = getUserRoom(socket.id);
+    if (!room) return;
+    if (room.queue.length === 0) return;
+
+    // Guard against race condition: multiple users firing video:ended simultaneously
+    if (endedProcessing.has(room.id)) return;
+    endedProcessing.add(room.id);
+
+    const next = room.queue.shift()!;
+
+    room.videoId = next.videoId;
+    room.videoUrl = next.videoUrl;
+    room.isPlaying = false;
+    room.currentTime = 0;
+    room.lastSyncTime = Date.now();
+
+    io.to(room.id).emit('video:load', { videoId: next.videoId, videoUrl: next.videoUrl });
+    room.seq++;
+    io.to(room.id).emit('video:state-update', getVideoState(room));
+    io.to(room.id).emit('queue:update', { queue: room.queue });
+
+    const systemMsg = addMessage(room, 'system', '');
+    if (systemMsg) {
+      systemMsg.text = `Now playing next in queue: ${next.title}`;
+      systemMsg.userId = 'system';
+      systemMsg.userName = 'System';
+      systemMsg.avatar = '🤖';
+      systemMsg.type = 'system';
+      io.to(room.id).emit('chat:message', systemMsg);
+    }
+
+    // Release the lock after a short delay to prevent duplicate processing
+    setTimeout(() => endedProcessing.delete(room.id), 2000);
+  });
+
+  socket.on('queue:add', (data, callback) => {
+    const room = getUserRoom(socket.id);
+    if (!room) {
+      callback({ success: false, error: 'Not in a room' });
+      return;
+    }
+
+    if (room.queue.length >= 50) {
+      callback({ success: false, error: 'Queue is full (max 50 items)' });
+      return;
+    }
+
+    const videoId = extractVideoId(data.url);
+    if (!videoId) {
+      callback({ success: false, error: 'Invalid YouTube URL' });
+      return;
+    }
+
+    const user = room.users.get(socket.id);
+    const item: QueueItem = {
+      id: nanoid(),
+      videoId,
+      videoUrl: data.url,
+      title: videoId, // Will be replaced by frontend display with thumbnail
+      addedBy: user?.name || 'Someone',
+      addedAt: Date.now(),
+    };
+
+    room.queue.push(item);
+    callback({ success: true });
+
+    io.to(room.id).emit('queue:update', { queue: room.queue });
+
+    const systemMsg = addMessage(room, 'system', '');
+    if (systemMsg) {
+      systemMsg.text = `${item.addedBy} added a video to the queue`;
+      systemMsg.userId = 'system';
+      systemMsg.userName = 'System';
+      systemMsg.avatar = '🤖';
+      systemMsg.type = 'system';
+      io.to(room.id).emit('chat:message', systemMsg);
+    }
+  });
+
+  socket.on('queue:remove', (data) => {
+    const room = getUserRoom(socket.id);
+    if (!room) return;
+
+    const idx = room.queue.findIndex((item) => item.id === data.itemId);
+    if (idx === -1) return;
+
+    room.queue.splice(idx, 1);
+    io.to(room.id).emit('queue:update', { queue: room.queue });
+  });
+
+  socket.on('queue:reorder', (data) => {
+    const room = getUserRoom(socket.id);
+    if (!room) return;
+
+    const idx = room.queue.findIndex((item) => item.id === data.itemId);
+    if (idx === -1) return;
+
+    const newIndex = Math.max(0, Math.min(data.newIndex, room.queue.length - 1));
+    const [item] = room.queue.splice(idx, 1);
+    room.queue.splice(newIndex, 0, item);
+
+    io.to(room.id).emit('queue:update', { queue: room.queue });
   });
 
   socket.on('chat:message', (data) => {

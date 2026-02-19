@@ -22,6 +22,16 @@ export interface VideoState {
   currentTime: number;
   playbackRate: number;
   timestamp: number;
+  seq: number;
+}
+
+export interface QueueItem {
+  id: string;
+  videoId: string;
+  videoUrl: string;
+  title: string;
+  addedBy: string;
+  addedAt: number;
 }
 
 export interface RoomState {
@@ -30,4 +40,5 @@ export interface RoomState {
   hostId: string;
   videoState: VideoState;
   messages: ChatMessage[];
+  queue: QueueItem[];
 }
