@@ -51,6 +51,10 @@ export class VoiceManager {
   private listeners = new Map<VoiceEventType, Set<VoiceEventHandler>>()
   private pttKeyDown = false
   private pttBound = false
+  private iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]
 
   constructor(socket: Socket, settings: VoiceSettings) {
     this.socket = socket
@@ -110,10 +114,25 @@ export class VoiceManager {
     })
   }
 
+  private async fetchIceServers() {
+    try {
+      const res = await fetch('/api/ice-servers')
+      if (res.ok) {
+        const data = await res.json()
+        if (data.iceServers?.length) {
+          this.iceServers = data.iceServers
+        }
+      }
+    } catch {
+      // Fall back to default STUN servers
+    }
+  }
+
   async joinVoice() {
     if (this.isInVoice) return
 
     try {
+      await this.fetchIceServers()
       this.audioContext = new AudioContext()
 
       this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -204,10 +223,7 @@ export class VoiceManager {
       stream: this.localStream,
       trickle: true,
       config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-        ],
+        iceServers: this.iceServers,
       },
     })
 

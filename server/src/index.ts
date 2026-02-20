@@ -41,6 +41,29 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// ICE servers config for WebRTC (STUN + TURN)
+app.get('/api/ice-servers', (_req, res) => {
+  const iceServers: { urls: string | string[]; username?: string; credential?: string }[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ];
+
+  // Add TURN server if configured via environment variables
+  const turnUrl = process.env.TURN_URL;
+  const turnUser = process.env.TURN_USERNAME;
+  const turnCred = process.env.TURN_CREDENTIAL;
+
+  if (turnUrl && turnUser && turnCred) {
+    iceServers.push({
+      urls: turnUrl,
+      username: turnUser,
+      credential: turnCred,
+    });
+  }
+
+  res.json({ iceServers });
+});
+
 // --- YouTube Comments Proxy via Invidious ---
 const DEFAULT_INVIDIOUS_INSTANCES = [
   'vid.puffyan.us',
