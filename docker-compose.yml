@@ -12,6 +12,9 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - TURN_URL=${TURN_URL:-}
+      - TURN_USERNAME=${TURN_USERNAME:-}
+      - TURN_CREDENTIAL=${TURN_CREDENTIAL:-}
     networks:
       - watchparty
     healthcheck:
