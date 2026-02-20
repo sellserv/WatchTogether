@@ -19,7 +19,7 @@ type SidebarTab = 'chat' | 'people' | 'queue' | 'comments' | 'settings'
 function RoomContent() {
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
-  const { joinVoice, leaveVoice } = useVoice()
+  const { leaveVoice } = useVoice()
 
   const [users, setUsers] = useState<User[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -54,14 +54,8 @@ function RoomContent() {
     connectedRef.current = true
   }, [])
 
-  // Auto-join voice when connected to room (muted by default)
-  const voiceJoinedRef = useRef(false)
-  useEffect(() => {
-    if (connected && !voiceJoinedRef.current) {
-      voiceJoinedRef.current = true
-      joinVoice()
-    }
-  }, [connected, joinVoice])
+  // Voice auto-join removed: getUserMedia requires a user gesture (click) in most
+  // browsers. The user clicks "Join Voice" in the VoiceControls overlay instead.
 
   useEffect(() => {
     const storedName = localStorage.getItem('wp_username')

@@ -6,6 +6,7 @@ import { socket } from './socket'
 interface VoiceContextValue {
   isMuted: boolean
   isInVoice: boolean
+  voiceError: string | null
   speakingUsers: Set<string>
   voiceUsers: Set<string>
   voiceSettings: VoiceSettings
@@ -14,6 +15,7 @@ interface VoiceContextValue {
   joinVoice: () => void
   leaveVoice: () => void
   setVoiceSettings: (settings: Partial<VoiceSettings>) => void
+  getMicLevel: () => number
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null)
@@ -40,6 +42,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const [isInVoice, setIsInVoice] = useState(false)
   const [speakingUsers, setSpeakingUsers] = useState<Set<string>>(new Set())
   const [voiceUsers, setVoiceUsers] = useState<Set<string>>(new Set())
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const [voiceSettings, setVoiceSettingsState] = useState<VoiceSettings>(loadSettings)
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
 
@@ -61,6 +64,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
 
     manager.on('voice-users-change', () => {
       setVoiceUsers(manager.getVoiceUsers())
+    })
+
+    manager.on('error', (err) => {
+      setVoiceError(err as string)
     })
 
     // Enumerate input devices
@@ -93,6 +100,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     managerRef.current?.leaveVoice()
   }, [])
 
+  const getMicLevel = useCallback(() => {
+    return managerRef.current?.getMicLevel() ?? 0
+  }, [])
+
   const setVoiceSettings = useCallback((newSettings: Partial<VoiceSettings>) => {
     setVoiceSettingsState((prev) => {
       const updated = { ...prev, ...newSettings }
@@ -107,6 +118,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       value={{
         isMuted,
         isInVoice,
+        voiceError,
         speakingUsers,
         voiceUsers,
         voiceSettings,
@@ -115,6 +127,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         joinVoice,
         leaveVoice,
         setVoiceSettings,
+        getMicLevel,
       }}
     >
       {children}

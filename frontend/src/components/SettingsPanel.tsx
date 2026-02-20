@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTheme } from '../lib/ThemeContext'
 import { useVoice } from '../lib/VoiceContext'
+import MicLevelMeter from './MicLevelMeter'
 import { Palette, SlidersHorizontal, Mic, Volume2, Keyboard } from 'lucide-react'
 
 export default function SettingsPanel() {
@@ -68,6 +69,11 @@ export default function SettingsPanel() {
               onChange={(e) => setVoiceSettings({ inputVolume: parseInt(e.target.value) })}
               className="w-full h-2"
             />
+            {/* Mic sensitivity meter */}
+            <div className="mt-2">
+              <label className="text-[10px] text-white/20 font-medium mb-1 block">Mic Test</label>
+              <MicLevelMeter variant="bar" />
+            </div>
           </div>
 
           {/* Output Volume */}

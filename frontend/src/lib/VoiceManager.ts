@@ -33,6 +33,7 @@ export type VoiceEventType =
   | 'voice-state-change'
   | 'voice-users-change'
   | 'input-devices-change'
+  | 'error'
 
 export type VoiceEventHandler = (data?: unknown) => void
 
@@ -51,6 +52,7 @@ export class VoiceManager {
   private settings: VoiceSettings
   private listeners = new Map<VoiceEventType, Set<VoiceEventHandler>>()
   private voiceUsers = new Set<string>()
+  private lastError: string | null = null
   private pttKeyDown = false
   private pttBound = false
   private iceServers: RTCIceServer[] = [
@@ -137,11 +139,12 @@ export class VoiceManager {
 
   async joinVoice() {
     if (this.isInVoice) return
+    this.lastError = null
 
     try {
       await this.fetchIceServers()
+
       this.audioContext = new AudioContext()
-      // Resume AudioContext in case browser suspended it (no user gesture yet)
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume()
       }
@@ -165,7 +168,6 @@ export class VoiceManager {
       this.analyserNode.fftSize = 256
       source.connect(this.inputGainNode)
       this.inputGainNode.connect(this.analyserNode)
-      // Don't connect to destination (we don't want to hear ourselves)
 
       // Start muted
       this.isMuted = true
@@ -185,7 +187,30 @@ export class VoiceManager {
       this.emit('muted-change')
     } catch (err) {
       console.error('Failed to join voice:', err)
+      // Clean up partial state
+      if (this.localStream) {
+        this.localStream.getTracks().forEach((t) => t.stop())
+        this.localStream = null
+      }
+      if (this.audioContext) {
+        this.audioContext.close()
+        this.audioContext = null
+      }
       this.isInVoice = false
+
+      if (err instanceof DOMException) {
+        if (err.name === 'NotAllowedError') {
+          this.lastError = 'Microphone access denied. Allow mic permission and try again.'
+        } else if (err.name === 'NotFoundError') {
+          this.lastError = 'No microphone found. Connect a mic and try again.'
+        } else {
+          this.lastError = `Mic error: ${err.message}`
+        }
+      } else {
+        this.lastError = 'Failed to join voice chat.'
+      }
+
+      this.emit('error', this.lastError)
       this.emit('voice-state-change')
     }
   }
@@ -570,9 +595,22 @@ export class VoiceManager {
     }
   }
 
+  // Returns mic input level 0-100 (read on demand, no re-renders)
+  private micLevelData = new Uint8Array(128)
+  getMicLevel(): number {
+    if (!this.analyserNode || !this.isInVoice) return 0
+    this.analyserNode.getByteFrequencyData(this.micLevelData)
+    let sum = 0
+    for (let i = 0; i < this.micLevelData.length; i++) sum += this.micLevelData[i]
+    const avg = sum / this.micLevelData.length
+    // Normalize to 0-100, with some amplification for typical speech levels
+    return Math.min(100, Math.round((avg / 128) * 100))
+  }
+
   // Getters
   getIsMuted() { return this.isMuted }
   getIsInVoice() { return this.isInVoice }
+  getLastError() { return this.lastError }
   getSpeakingUsers() { return new Set(this.speakingUsers) }
   getVoiceUsers() { return new Set(this.voiceUsers) }
   getSettings() { return { ...this.settings } }
