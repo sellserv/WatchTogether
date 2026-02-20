@@ -4,14 +4,15 @@ import { interpolateThemeColors } from './colorExtractor'
 
 type ThemeColors = Theme['colors']
 
+// How much the video influences the base theme (0 = none, 1 = full override)
+const AMBIENT_MIX = 0.10
+
 interface ThemeContextValue {
   currentTheme: Theme
   setThemeById: (id: string) => void
   panelOpacity: number
   setPanelOpacity: (opacity: number) => void
   themes: Theme[]
-  ambientEnabled: boolean
-  setAmbientEnabled: (enabled: boolean) => void
   setAmbientColors: (colors: ThemeColors | null) => void
 }
 
@@ -41,33 +42,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return stored ? parseFloat(stored) : DEFAULT_PANEL_OPACITY
   })
 
-  const [ambientEnabled, setAmbientEnabledState] = useState<boolean>(() => {
-    return localStorage.getItem('wp_ambient') === 'true'
-  })
-
-  const [ambientColors, setAmbientColorsState] = useState<ThemeColors | null>(null)
-
-  // Animation refs (only used for non-ambient transitions)
+  // Animation refs (only used for manual theme transitions)
   const prevColorsRef = useRef<ThemeColors>(currentTheme.colors)
   const targetColorsRef = useRef<ThemeColors>(currentTheme.colors)
   const animationRef = useRef<number>(0)
   const animStartRef = useRef<number>(0)
-  const ambientEnabledRef = useRef(ambientEnabled)
+  const currentThemeRef = useRef(currentTheme)
 
-  // Keep ref in sync
-  useEffect(() => { ambientEnabledRef.current = ambientEnabled }, [ambientEnabled])
-
-  const setAmbientEnabled = useCallback((enabled: boolean) => {
-    setAmbientEnabledState(enabled)
-    localStorage.setItem('wp_ambient', String(enabled))
-  }, [])
+  useEffect(() => { currentThemeRef.current = currentTheme }, [currentTheme])
 
   const setAmbientColors = useCallback((colors: ThemeColors | null) => {
-    setAmbientColorsState(colors)
-    // When ambient is active, the hook drives smooth rAF drifting —
-    // apply directly, no extra animation layer needed.
-    if (colors && ambientEnabledRef.current) {
-      applyColors(colors)
+    // Blend video colors into the base theme and apply directly —
+    // the hook drives smooth rAF drifting so no extra animation needed.
+    if (colors) {
+      const blended = interpolateThemeColors(currentThemeRef.current.colors, colors, AMBIENT_MIX)
+      applyColors(blended)
     }
   }, [])
 
@@ -82,15 +71,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('wp_panel_opacity', String(opacity))
   }
 
-  // Animated transition for non-ambient color changes
-  // (manual theme switch, or ambient toggled off → revert to theme)
-  const manualColors = currentTheme.colors
-  const shouldAnimate = !ambientEnabled || !ambientColors
-
+  // Animated transition for manual theme switches
   useEffect(() => {
-    if (!shouldAnimate) return
-
-    const newTarget = manualColors
+    const newTarget = currentTheme.colors
 
     prevColorsRef.current = targetColorsRef.current
     targetColorsRef.current = newTarget
@@ -114,7 +97,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     return () => cancelAnimationFrame(animationRef.current)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldAnimate, currentTheme.id])
+  }, [currentTheme.id])
 
   // Apply panel opacity separately
   useEffect(() => {
@@ -128,8 +111,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       panelOpacity,
       setPanelOpacity,
       themes,
-      ambientEnabled,
-      setAmbientEnabled,
       setAmbientColors,
     }}>
       {children}

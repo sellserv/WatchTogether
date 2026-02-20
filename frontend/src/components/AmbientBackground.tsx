@@ -2,13 +2,12 @@ import { useRef, useEffect, useCallback } from 'react'
 
 interface AmbientBackgroundProps {
   videoId: string
-  enabled: boolean
 }
 
 const CANVAS_W = 160
 const CANVAS_H = 90
 
-export default function AmbientBackground({ videoId, enabled }: AmbientBackgroundProps) {
+export default function AmbientBackground({ videoId }: AmbientBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const prevVideoRef = useRef('')
 
@@ -27,13 +26,13 @@ export default function AmbientBackground({ videoId, enabled }: AmbientBackgroun
   }, [])
 
   useEffect(() => {
-    if (!enabled || !videoId) return
+    if (!videoId) return
     if (videoId === prevVideoRef.current) return
     prevVideoRef.current = videoId
     drawThumbnail(videoId)
-  }, [videoId, enabled, drawThumbnail])
+  }, [videoId, drawThumbnail])
 
-  if (!enabled || !videoId) return null
+  if (!videoId) return null
 
   return (
     <div className="fixed inset-0 z-0 pointer-events-none">
@@ -47,8 +46,8 @@ export default function AmbientBackground({ videoId, enabled }: AmbientBackgroun
           left: '-15%',
           width: '130%',
           height: '140%',
-          filter: 'blur(90px) saturate(1.4)',
-          opacity: 0.28,
+          filter: 'blur(90px) saturate(1.3)',
+          opacity: 0.22,
           pointerEvents: 'none',
         }}
       />

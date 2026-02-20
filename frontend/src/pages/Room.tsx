@@ -13,7 +13,6 @@ import SettingsPanel from '../components/SettingsPanel'
 import VoiceControls from '../components/VoiceControls'
 import AmbientBackground from '../components/AmbientBackground'
 import { VoiceProvider, useVoice } from '../lib/VoiceContext'
-import { useTheme } from '../lib/ThemeContext'
 import { useAmbientColors } from '../hooks/useAmbientColors'
 import { MessageSquare, Users, X, ListMusic, MessageCircle, Settings } from 'lucide-react'
 
@@ -23,7 +22,6 @@ function RoomContent() {
   const { roomId } = useParams<{ roomId: string }>()
   const navigate = useNavigate()
   const { leaveVoice } = useVoice()
-  const { ambientEnabled } = useTheme()
 
   const [users, setUsers] = useState<User[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -323,7 +321,7 @@ function RoomContent() {
   return (
     <div className="h-screen flex flex-col bg-[#0a0a14] overflow-hidden relative">
       {/* Page-level ambient glow — bleeds across header, sidebar, everything */}
-      <AmbientBackground videoId={videoState.videoId} enabled={ambientEnabled} />
+      <AmbientBackground videoId={videoState.videoId} />
 
       {/* Ambient gradient orbs for glassmorphism backdrop */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full blur-[180px] pointer-events-none transition-[background] duration-700" style={{ background: 'var(--orb-primary)' }} />

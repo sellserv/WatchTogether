@@ -141,12 +141,12 @@ export function paletteToThemeColors(palette: Palette): ThemeColors {
     '--accent-700': `${accent700.r} ${accent700.g} ${accent700.b}`,
     '--accent-800': `${accent800.r} ${accent800.g} ${accent800.b}`,
     '--accent-900': `${accent900.r} ${accent900.g} ${accent900.b}`,
-    '--accent-glow': `rgba(${accent600.r}, ${accent600.g}, ${accent600.b}, 0.22)`,
+    '--accent-glow': `rgba(${accent600.r}, ${accent600.g}, ${accent600.b}, 0.15)`,
     '--accent-text': `#${toHex(textColor)}`,
-    '--accent-border': `rgba(${accent500.r}, ${accent500.g}, ${accent500.b}, 0.28)`,
-    '--orb-primary': `rgba(${accent900.r}, ${accent900.g}, ${accent900.b}, 0.18)`,
-    '--orb-secondary': `rgba(${palette.secondary.r}, ${palette.secondary.g}, ${palette.secondary.b}, 0.14)`,
-    '--orb-tertiary': `rgba(${palette.tertiary.r}, ${palette.tertiary.g}, ${palette.tertiary.b}, 0.10)`,
+    '--accent-border': `rgba(${accent500.r}, ${accent500.g}, ${accent500.b}, 0.25)`,
+    '--orb-primary': `rgba(${accent900.r}, ${accent900.g}, ${accent900.b}, 0.08)`,
+    '--orb-secondary': `rgba(${palette.secondary.r}, ${palette.secondary.g}, ${palette.secondary.b}, 0.06)`,
+    '--orb-tertiary': `rgba(${palette.tertiary.r}, ${palette.tertiary.g}, ${palette.tertiary.b}, 0.05)`,
   }
 }
 
