@@ -180,14 +180,3 @@ export function extractVideoId(url: string): string | null {
   return null;
 }
 
-export function getRoomCount(): number {
-  return rooms.size;
-}
-
-export function getTotalUsers(): number {
-  let count = 0;
-  for (const [, room] of rooms) {
-    count += room.users.size;
-  }
-  return count;
-}

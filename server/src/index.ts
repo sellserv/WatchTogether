@@ -12,8 +12,6 @@ import {
   getVideoState,
   addMessage,
   extractVideoId,
-  getRoomCount,
-  getTotalUsers,
 } from './rooms.js';
 import type { ClientToServerEvents, ServerToClientEvents, QueueItem } from './types.js';
 
@@ -31,15 +29,6 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
 
 app.use(cors());
 app.use(express.json());
-
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    rooms: getRoomCount(),
-    users: getTotalUsers(),
-    uptime: process.uptime(),
-  });
-});
 
 // --- YouTube Comments Proxy via Invidious ---
 const DEFAULT_INVIDIOUS_INSTANCES = [
