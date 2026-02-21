@@ -1,30 +1,60 @@
 # WatchTogether Deployment Guide
 
+Deploy on an Ubuntu VM (Proxmox) with Docker Compose and a Cloudflare Tunnel. No port forwarding, no UDP, no reverse proxy.
+
 ## Architecture
 
 ```
-Internet → Cloudflare → cloudflared container → frontend (nginx) → server (node)
+Internet → Cloudflare Edge (HTTPS) → Tunnel (outbound from VM)
+    → cloudflared container → frontend (nginx:80)
+        ├─ Static files → serves React app
+        ├─ /api/*       → proxy to server:3001
+        └─ /socket.io/* → proxy to server:3001 (WebSocket)
 ```
 
-- **No port forwarding** — Cloudflare Tunnel creates an outbound connection from your server
-- **No reverse proxy** — replaces Nginx Proxy Manager entirely
-- **HTTPS automatic** — Cloudflare handles SSL
-- **Docker Compose** via Dockge on TrueNAS
+- **No port forwarding** — Cloudflare Tunnel creates an outbound-only connection from your VM
+- **No UDP** — everything runs over HTTPS/WebSocket through Cloudflare
+- **HTTPS automatic** — Cloudflare handles SSL termination
+- **Docker Compose** on an Ubuntu VM in Proxmox
+
+---
+
+## Prerequisites
+
+- Ubuntu VM running in Proxmox (with internet access)
+- Docker and Docker Compose installed
+- A domain managed by Cloudflare
+- A Cloudflare account with Zero Trust access
+
+### Install Docker (if not already installed)
+
+```bash
+# Update packages
+sudo apt update && sudo apt upgrade -y
+
+# Install Docker
+curl -fsSL https://get.docker.com | sudo sh
+
+# Add your user to the docker group
+sudo usermod -aG docker $USER
+
+# Log out and back in, then verify
+docker --version
+docker compose version
+```
 
 ---
 
 ## Step 1: Create a Cloudflare Tunnel
 
-### 1. Go to Cloudflare Zero Trust Dashboard
-
-1. Log in to https://one.dash.cloudflare.com
+1. Log in to [Cloudflare Zero Trust](https://one.dash.cloudflare.com)
 2. Go to **Networks** → **Tunnels**
 3. Click **Create a tunnel**
 4. Select **Cloudflared** as the connector
 5. Name it (e.g. `watchparty`)
-6. Copy the **tunnel token** — you'll need this
+6. Copy the **tunnel token** — you'll need this in Step 2
 
-### 2. Configure the Tunnel Route
+### Configure the Public Hostname
 
 In the tunnel config, add a **Public Hostname**:
 
@@ -35,140 +65,89 @@ In the tunnel config, add a **Public Hostname**:
 | Type | `HTTP` |
 | URL | `frontend:80` |
 
-This tells Cloudflare to route `watch.yourdomain.com` → the frontend container on port 80 (internal Docker network).
+This routes `watch.yourdomain.com` → the frontend container on port 80 (internal Docker network).
 
-**Additional settings** (click the hostname to expand):
+**Additional settings** (expand the hostname entry):
 
 Under **HTTP Settings**:
-- **HTTP/2 Origin**: ON
-- **WebSocket**: ON (critical for Socket.IO)
-- **No TLS Verify**: ON (the internal connection is HTTP between containers)
+- **WebSocket**: ON (required for Socket.IO real-time sync)
+- **No TLS Verify**: ON (internal traffic between containers is plain HTTP)
 
 ---
 
-## Step 2: Set Environment Variables
+## Step 2: Configure Environment
 
-Create a `.env` file in your project root (or set in Dockge UI):
+Create a `.env` file in the project root:
 
 ```env
 # Cloudflare Tunnel token from Step 1
 TUNNEL_TOKEN=eyJhIjoiYWJjZGVmZy4uLi...
 
-# CORS origin — your public URL
+# CORS origin — must match your public URL exactly
 CORS_ORIGIN=https://watch.yourdomain.com
-
-# TURN server for voice chat (see Step 3)
-TURN_URL=turn:openrelay.metered.ca:443
-TURN_USERNAME=openrelayproject
-TURN_CREDENTIAL=openrelayproject
 ```
+
+That's it — only two variables needed.
 
 ---
 
-## Step 3: TURN Server for Voice Chat
+## Step 3: Deploy
 
-WebRTC audio goes peer-to-peer, NOT through the tunnel. Users behind restrictive NATs need a TURN relay server. Pick one:
-
-### Option A: Free TURN Provider (Quickest)
-
-No setup needed, just set env vars:
-
-```env
-TURN_URL=turn:openrelay.metered.ca:443
-TURN_USERNAME=openrelayproject
-TURN_CREDENTIAL=openrelayproject
-```
-
-Or sign up at https://www.metered.ca/ for a dedicated free tier (500GB/month).
-
-### Option B: Self-Hosted coturn (More Reliable)
-
-Add to `docker-compose.yml`:
-
-```yaml
-  coturn:
-    image: coturn/coturn:latest
-    container_name: watchparty-coturn
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
-```
-
-Create `coturn/turnserver.conf`:
-
-```conf
-listening-port=3478
-realm=yourdomain.com
-server-name=yourdomain.com
-lt-cred-mech
-user=watchtogether:your-secure-password
-min-port=49152
-max-port=65535
-no-multicast-peers
-no-cli
-fingerprint
-```
-
-**coturn needs direct access** — it can't go through Cloudflare Tunnel (UDP traffic). You'll need:
-- Port forward **3478 TCP+UDP** and **49152-65535 UDP** on your router
-- A DNS record for `turn.yourdomain.com` → your public IP (**DNS only, grey cloud** in Cloudflare — NOT proxied)
-
-```env
-TURN_URL=turn:turn.yourdomain.com:3478
-TURN_USERNAME=watchtogether
-TURN_CREDENTIAL=your-secure-password
-```
-
-> Note: The web app itself needs zero port forwarding (that's the point of the tunnel). Only coturn needs ports if you self-host it. Using Option A avoids this entirely.
-
----
-
-## Step 4: Deploy
+Clone the repo and start the stack:
 
 ```bash
+git clone <your-repo-url> watchtogether
+cd watchtogether
+
+# Create .env with your values (see Step 2)
+cp .env.example .env
+nano .env
+
+# Build and start
 docker compose up -d --build
 ```
 
-Or in Dockge: **Update & Restart** the stack.
+Verify everything is running:
 
-Your app is live at `https://watch.yourdomain.com` — no port forwarding, no NPM, no SSL config.
+```bash
+docker compose ps
+docker logs watchparty-tunnel
+docker logs watchparty-server
+docker logs watchparty-frontend
+```
+
+Your app is live at `https://watch.yourdomain.com`.
+
+---
+
+## Updating
+
+```bash
+git pull
+docker compose up -d --build
+```
 
 ---
 
 ## How Traffic Flows
 
 ```
-Browser (User A)
-    ↓ HTTPS
+Browser
+  ↓ HTTPS
 Cloudflare Edge
-    ↓ Tunnel (outbound from your server)
+  ↓ Tunnel (outbound connection from VM)
 cloudflared container
-    ↓ HTTP (internal Docker network)
+  ↓ HTTP (internal Docker network)
 frontend container (nginx:80)
-    ├─ Static files: /  → serves React app
-    ├─ /api/*           → proxy to server:3001
-    └─ /socket.io/*     → proxy to server:3001 (WebSocket)
-            ↓
+  ├─ / → React app (static files)
+  ├─ /api/* → proxy to server:3001
+  └─ /socket.io/* → proxy to server:3001 (WebSocket upgrade)
+        ↓
 server container (node:3001)
-    └─ Relays WebRTC signaling (offers/answers/ICE candidates)
-
-Voice audio: Browser A ←──P2P (or via TURN)──→ Browser B
+  └─ Manages rooms, chat, video sync via Socket.IO
 ```
 
----
-
-## Migrating from Nginx Proxy Manager
-
-If you're currently using NPM:
-
-1. Add the `tunnel` service to your docker-compose (already done)
-2. Set `TUNNEL_TOKEN` in your env
-3. Remove the `ports` mapping from frontend (already done — no port 8080 exposed)
-4. Remove or disable the NPM proxy host for watchparty
-5. `docker compose up -d --build`
-6. Verify `https://watch.yourdomain.com` works
-7. Remove the port forwarding rule on your router for port 8080
+All traffic flows through the Cloudflare Tunnel — no ports exposed, no inbound connections needed.
 
 ---
 
@@ -176,17 +155,9 @@ If you're currently using NPM:
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| 502 Bad Gateway | Tunnel can't reach frontend | Check `frontend` container is running, URL in tunnel config is `frontend:80` |
+| 502 Bad Gateway | Tunnel can't reach frontend | Check `frontend` container is running: `docker compose ps` |
 | WebSocket disconnects | WebSocket not enabled in tunnel | Enable WebSocket in tunnel hostname HTTP settings |
-| Voice fails between users | No TURN server | Set TURN env vars (Option A or B above) |
-| "Microphone access denied" | Not HTTPS | Should be automatic with tunnel — check URL is `https://` |
-| Join Voice does nothing | Mic blocked by browser | Click the lock icon in URL bar, allow microphone |
-| Tunnel shows "unhealthy" | Token wrong or container can't reach Cloudflare | Check `TUNNEL_TOKEN`, check container logs: `docker logs watchparty-tunnel` |
-
-## Testing TURN
-
-Verify your TURN server works:
-1. Open https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
-2. Add your TURN server URL + credentials
-3. Click "Gather candidates"
-4. You should see `relay` type candidates — TURN is working
+| Tunnel shows "unhealthy" | Bad token or no internet | Check `TUNNEL_TOKEN` in `.env`, check logs: `docker logs watchparty-tunnel` |
+| CORS errors in browser | `CORS_ORIGIN` mismatch | Ensure it matches your public URL exactly (including `https://`) |
+| Video sync not working | Server not healthy | Check server logs: `docker logs watchparty-server` |
+| Containers won't start | Docker not running | `sudo systemctl start docker` |

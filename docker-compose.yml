@@ -1,6 +1,6 @@
 # WatchParty - Self-hosted YouTube Watch Party
-# Deploy via Dockge on TrueNAS
-# Cloudflare Tunnel for secure access (no port forwarding needed)
+# Deploy on Ubuntu VM (Proxmox) with Cloudflare Tunnel
+# No port forwarding, no UDP — all traffic via tunnel
 
 services:
   server:
@@ -11,9 +11,6 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
-      - TURN_URL=${TURN_URL:-}
-      - TURN_USERNAME=${TURN_USERNAME:-}
-      - TURN_CREDENTIAL=${TURN_CREDENTIAL:-}
     networks:
       - watchparty
     healthcheck:
