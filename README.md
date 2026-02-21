@@ -10,25 +10,25 @@ Watch YouTube videos in sync with friends. Create a room, share the code, and en
 - User presence with avatars
 - Host controls (host auto-transfers if they leave)
 
-## Quick Start (Docker - Recommended)
+## Deployment (Docker + Cloudflare Tunnel)
 
-### Prerequisites
+Designed to run on an Ubuntu VM (Proxmox) with a Cloudflare Tunnel — no port forwarding, no UDP, no reverse proxy needed.
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed
+### Quick Start
 
-### Steps
-
-1. **Copy the environment file:**
+1. **Clone and configure:**
 
    ```bash
+   git clone https://github.com/sellserv/WatchTogether.git
+   cd WatchTogether
    cp .env.example .env
    ```
 
-2. **Edit `.env` if needed** (defaults work fine for local use):
+2. **Edit `.env`:**
 
-   ```
-   APP_PORT=8080          # Port the app will be accessible on
-   CORS_ORIGIN=*          # Set to your domain in production (e.g. https://watch.example.com)
+   ```env
+   TUNNEL_TOKEN=<your-cloudflare-tunnel-token>
+   CORS_ORIGIN=https://watch.yourdomain.com
    ```
 
 3. **Start everything:**
@@ -37,32 +37,9 @@ Watch YouTube videos in sync with friends. Create a room, share the code, and en
    docker compose up -d --build
    ```
 
-4. **Open in browser:**
+4. Visit `https://watch.yourdomain.com`
 
-   ```
-   http://localhost:8080
-   ```
-
-5. **Stop:**
-
-   ```bash
-   docker compose down
-   ```
-
-## Hosting on a Server (with a domain)
-
-If you want to expose this on the internet:
-
-1. Point your domain (e.g. `watch.example.com`) to your server's IP
-2. Set up a reverse proxy (Nginx Proxy Manager, Caddy, etc.) pointing to port `8080`
-3. Enable SSL (Let's Encrypt)
-4. Update `.env`:
-   ```
-   CORS_ORIGIN=https://watch.example.com
-   ```
-5. Rebuild: `docker compose up -d --build`
-
-**Important:** The reverse proxy must support WebSocket upgrades for real-time sync to work. In Nginx Proxy Manager, enable "WebSockets Support" for the proxy host.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full setup instructions including Cloudflare Tunnel configuration and Docker installation.
 
 ## Development (without Docker)
 
@@ -108,5 +85,6 @@ If you want to expose this on the internet:
 ## Architecture
 
 - **Frontend:** React + TypeScript + Vite + Tailwind CSS
-- **Backend:** Express + Socket.io + TypeScript
+- **Backend:** Express + Socket.IO + TypeScript
 - **Production:** Multi-stage Docker builds, Nginx serves frontend and proxies WebSocket/API to backend
+- **Networking:** Cloudflare Tunnel (outbound-only, no exposed ports)
